@@ -1,0 +1,5 @@
+{
+  "name": "SnowTest - ServiceNow Integration Dashboard",
+  "description": "A modern, pastel-themed integration testing dashboard optimized for ServiceNow REST APIs. Features inbound request testing, simulated outbound webhook listening, and request history analytics.",
+  "requestFramePermissions": []
+}
