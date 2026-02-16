@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Send, Plus, Trash2, Code, Play, AlertCircle, CheckCircle, Copy, Terminal, ExternalLink } from 'lucide-react';
+import { Send, Plus, Trash2, Play, AlertCircle, Copy, Terminal, ExternalLink } from 'lucide-react';
 import { Button } from './ui/Button';
 import { EnvironmentSettings, HttpMethod, KeyValue, RequestHistoryItem } from '../types';
 import { saveHistoryItem } from '../services/storageService';
@@ -19,9 +19,9 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'params' | 'auth' | 'headers' | 'body'>('params');
 
-  // Prism highlight effect
+  // Prism highlight effect for the response code block
   useEffect(() => {
-    if (response) {
+    if (response && !response.error) {
       Prism.highlightAll();
     }
   }, [response]);
@@ -46,7 +46,7 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
     
     const url = endpoint.startsWith('http') ? endpoint : `${settings.instanceUrl}${endpoint}`;
     const auth = settings.username ? `-u "${settings.username}:******"` : '';
-    const data = method !== 'GET' && method !== 'DELETE' ? `-d '${body.replace(/\n/g, '')}'` : '';
+    const data = (method !== 'GET' && method !== 'DELETE') ? `-d '${body.replace(/\n/g, '')}'` : '';
     
     return `curl -X ${method} "${url}" ${headerStr} ${auth} ${data}`;
   };
@@ -64,7 +64,7 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
         return acc;
       }, {} as Record<string, string>);
 
-      // Add Auth
+      // Add Basic Auth Header
       if (settings.username && settings.password) {
         activeHeaders['Authorization'] = 'Basic ' + btoa(`${settings.username}:${settings.password}`);
       }
@@ -72,7 +72,7 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
       let fetchResponse;
       
       if (settings.useMockMode) {
-        // Mock delay
+        // Mock Mode Simulation
         await new Promise(r => setTimeout(r, 800));
         fetchResponse = {
           status: 201,
@@ -88,10 +88,11 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
           })
         };
       } else {
-        // Proxy handling for CORS support
+        // Real-time Fetch with Proxy Support
         let fetchUrl = targetUrl;
         if (settings.useProxy && settings.proxyUrl) {
-          fetchUrl = settings.proxyUrl + targetUrl;
+          // Properly encode targetUrl when appending to a proxy
+          fetchUrl = settings.proxyUrl + encodeURIComponent(targetUrl);
         }
 
         fetchResponse = await fetch(fetchUrl, {
@@ -105,6 +106,7 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
       const endTime = Date.now();
       const duration = endTime - startTime;
 
+      // Save to local storage history
       const historyItem: RequestHistoryItem = {
         id: Date.now().toString(),
         timestamp: startTime,
@@ -116,8 +118,8 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
         requestBody: body,
         responseBody: JSON.stringify(responseData)
       };
-
       saveHistoryItem(historyItem);
+
       setResponse({
         status: fetchResponse.status || 200,
         statusText: fetchResponse.ok ? 'OK' : 'Error',
@@ -140,28 +142,25 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
 
   return (
     <div className="flex flex-col h-full gap-6">
-      {/* Request Composer Card */}
+      {/* Request Composer */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
         <div className="p-4 border-b border-slate-100 flex items-center gap-3">
           <select 
             value={method}
             onChange={(e) => setMethod(e.target.value as HttpMethod)}
-            className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block p-2.5 font-mono font-bold"
+            className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-primary-500 block p-2.5 font-mono font-bold"
           >
             {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map(m => (
               <option key={m} value={m}>{m}</option>
             ))}
           </select>
           <div className="flex-1 relative">
-             <span className="absolute left-3 top-2.5 text-slate-400 text-sm font-mono select-none">
-                {settings.instanceUrl ? '' : 'https://'}
-             </span>
              <input
               type="text"
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
               placeholder="Enter endpoint (e.g. /api/now/table/incident)"
-              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-primary-500 focus:border-primary-500 block w-full p-2.5 font-mono pl-3"
+              className="bg-slate-50 border border-slate-200 text-slate-700 text-sm rounded-lg focus:ring-primary-500 block w-full p-2.5 font-mono"
             />
           </div>
           <Button onClick={handleSend} isLoading={loading} icon={<Send size={16} />}>
@@ -183,7 +182,7 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
               className={`px-4 py-3 text-sm font-medium transition-colors ${
                 activeTab === tab.id 
                   ? 'text-primary-600 border-b-2 border-primary-600 bg-white' 
-                  : 'text-slate-500 hover:text-slate-700 hover:bg-slate-100'
+                  : 'text-slate-500 hover:text-slate-700'
               }`}
             >
               {tab.label}
@@ -191,7 +190,6 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
           ))}
         </div>
 
-        {/* Tab Content */}
         <div className="p-4 min-h-[200px]">
           {activeTab === 'headers' && (
             <div className="space-y-2">
@@ -200,27 +198,24 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
                   <input
                     type="checkbox"
                     checked={h.active}
-                    onChange={(e) => {
-                      const newHeaders = headers.map(header => header.id === h.id ? {...header, active: e.target.checked} : header);
-                      setHeaders(newHeaders);
-                    }}
-                    className="mt-2.5 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                    onChange={(e) => setHeaders(headers.map(header => header.id === h.id ? {...header, active: e.target.checked} : header))}
+                    className="mt-2.5 rounded border-slate-300 text-primary-600"
                   />
                   <input
                     placeholder="Key"
                     value={h.key}
                     onChange={(e) => handleHeaderChange(h.id, 'key', e.target.value)}
-                    className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 font-mono focus:ring-primary-500 focus:border-primary-500"
+                    className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 font-mono"
                   />
                   <input
                     placeholder="Value"
                     value={h.value}
                     onChange={(e) => handleHeaderChange(h.id, 'value', e.target.value)}
-                    className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 font-mono focus:ring-primary-500 focus:border-primary-500"
+                    className="flex-1 text-sm border border-slate-200 rounded-lg px-3 py-2 font-mono"
                   />
-                  <Button variant="ghost" size="sm" onClick={() => handleRemoveHeader(h.id)}>
-                    <Trash2 size={16} className="text-slate-400 hover:text-rose-500" />
-                  </Button>
+                  <button onClick={() => handleRemoveHeader(h.id)} className="p-2 text-slate-400 hover:text-rose-500">
+                    <Trash2 size={16} />
+                  </button>
                 </div>
               ))}
               <Button variant="secondary" size="sm" onClick={handleAddHeader} icon={<Plus size={14} />}>
@@ -232,17 +227,17 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
           {activeTab === 'auth' && (
             <div className="max-w-md space-y-4">
               <div className="bg-blue-50 p-3 rounded-lg text-blue-700 text-sm flex gap-2">
-                <AlertCircle size={16} className="mt-0.5 shrink-0" />
-                <p>Using credentials from <strong>Settings</strong>. {settings.useMockMode ? '(Mock Mode Active)' : ''}</p>
+                <AlertCircle size={16} />
+                <p>Credentials managed in <strong>Environment</strong> settings.</p>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Username</label>
-                  <input disabled value={settings.username} className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-500" />
+                  <label className="text-xs font-medium text-slate-500">Username</label>
+                  <input disabled value={settings.username} className="w-full bg-slate-100 border rounded-lg px-3 py-2 text-sm text-slate-500" />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">Type</label>
-                  <input disabled value="Basic Auth" className="w-full bg-slate-100 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-500" />
+                  <label className="text-xs font-medium text-slate-500">Type</label>
+                  <input disabled value="Basic Auth" className="w-full bg-slate-100 border rounded-lg px-3 py-2 text-sm text-slate-500" />
                 </div>
               </div>
             </div>
@@ -253,23 +248,20 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
               <textarea
                 value={body}
                 onChange={(e) => setBody(e.target.value)}
-                className="w-full h-48 font-mono text-sm p-4 border border-slate-200 rounded-lg focus:ring-primary-500 focus:border-primary-500 bg-slate-900 text-slate-50 resize-y"
+                className="w-full h-48 font-mono text-sm p-4 border rounded-lg bg-slate-900 text-slate-50 resize-y"
               />
-              <div className="absolute top-2 right-2 flex gap-1">
-                <button onClick={() => {
-                  try {
-                    setBody(JSON.stringify(JSON.parse(body), null, 2));
-                  } catch (e) { /* ignore */ }
-                }} className="text-xs bg-white/10 text-white hover:bg-white/20 px-2 py-1 rounded backdrop-blur-sm">
-                  Prettify
-                </button>
-              </div>
+              <button 
+                onClick={() => { try { setBody(JSON.stringify(JSON.parse(body), null, 2)); } catch (e) {} }}
+                className="absolute top-2 right-2 text-xs bg-white/10 text-white px-2 py-1 rounded"
+              >
+                Prettify
+              </button>
             </div>
           )}
           
           {activeTab === 'params' && (
             <div className="text-center py-8 text-slate-400">
-               <p>URL Parameters management coming soon. Edit URL directly above.</p>
+               <p>Edit URL parameters directly in the endpoint field above.</p>
             </div>
           )}
         </div>
@@ -277,7 +269,7 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
 
       {/* Response Panel */}
       <div className="bg-white rounded-2xl shadow-sm border border-slate-100 flex-1 flex flex-col min-h-[300px]">
-        <div className="p-3 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+        <div className="p-3 border-b flex justify-between items-center bg-slate-50/50">
           <h3 className="font-semibold text-slate-700 flex items-center gap-2">
             <Terminal size={18} /> Response
           </h3>
@@ -287,7 +279,6 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
                 {response.status} {response.statusText}
               </span>
               <span className="text-slate-500">{response.time}ms</span>
-              <span className="text-slate-500">{response.size}B</span>
             </div>
           )}
         </div>
@@ -298,43 +289,21 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
                 <button 
                   onClick={() => navigator.clipboard.writeText(JSON.stringify(response.data, null, 2))}
                   className="absolute top-4 right-4 p-2 bg-white/10 text-slate-300 rounded hover:bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity"
-                  title="Copy JSON"
                 >
                   <Copy size={16} />
                 </button>
                {response.error ? (
                  <div className="p-6">
-                   <div className="text-rose-400 font-mono mb-4">
-                     Error: {response.message}
-                   </div>
-                   
-                   {!settings.useProxy && !settings.useMockMode && (
+                   <div className="text-rose-400 font-mono mb-4">Error: {response.message}</div>
+                   {!settings.useProxy && (
                      <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 text-slate-300 text-sm">
                        <div className="flex items-center gap-2 font-bold text-amber-400 mb-2">
                          <AlertCircle size={16} /> CORS Error Detected
                        </div>
-                       <p className="mb-3">
-                         Browser security blocked this request because the ServiceNow API does not allow cross-origin requests from localhost.
-                       </p>
-                       <div className="flex gap-3">
-                         <button 
-                           onClick={() => {
-                             // This will require a reload or state lift to toggle settings, 
-                             // for now we direct them to settings tab
-                             alert("Please go to Settings > Connection Settings and enable 'Use CORS Proxy'");
-                           }}
-                           className="text-primary-400 hover:text-primary-300 underline"
-                         >
-                           Enable CORS Proxy in Settings
-                         </button>
-                         <span className="text-slate-600">|</span>
-                         <button 
-                            onClick={() => window.open('https://developer.servicenow.com/blog.do?p=/post/cors-allows-access-to-resources-from-different-origins/', '_blank')}
-                            className="flex items-center gap-1 hover:text-white"
-                         >
-                           Read about CORS <ExternalLink size={12} />
-                         </button>
-                       </div>
+                       <p className="mb-3">Browser security blocked this request. ServiceNow does not allow direct cross-origin requests from browsers.</p>
+                       <button onClick={() => alert("Enable 'Use CORS Proxy' in Environment settings")} className="text-primary-400 underline">
+                         How to fix?
+                       </button>
                      </div>
                    )}
                  </div>
@@ -344,20 +313,15 @@ export const InboundTester: React.FC<InboundTesterProps> = ({ settings }) => {
              </>
            ) : (
              <div className="flex flex-col items-center justify-center h-full text-slate-600">
-               <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mb-4">
-                 <Play size={32} className="text-slate-500 ml-1" />
-               </div>
-               <p>Send a request to see the response here</p>
+               <Play size={32} className="mb-2 opacity-20" />
+               <p>Send a request to see the response</p>
              </div>
            )}
         </div>
         
-        {/* cURL Footer */}
-        <div className="p-3 bg-slate-50 border-t border-slate-200 text-xs font-mono text-slate-500 truncate flex justify-between items-center">
-          <div className="truncate flex-1 mr-4 opacity-75">
-            {generateCurl()}
-          </div>
-          <button onClick={() => navigator.clipboard.writeText(generateCurl())} className="text-primary-600 hover:text-primary-700 font-medium whitespace-nowrap">
+        <div className="p-3 bg-slate-50 border-t text-xs font-mono text-slate-500 flex justify-between items-center">
+          <div className="truncate opacity-75">{generateCurl()}</div>
+          <button onClick={() => navigator.clipboard.writeText(generateCurl())} className="text-primary-600 font-medium">
             Copy cURL
           </button>
         </div>
